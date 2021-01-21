@@ -1,0 +1,9 @@
+*.dck
+
+# Vintage Cube
+!/cube.dck
+
+# Python files
+*.pyc
+__pycache__/
+__pypackages__/
