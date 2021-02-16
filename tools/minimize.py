@@ -2,18 +2,22 @@
 """Minimize an XMage deck file.
 
 Minimizes an XMage deck file, stripping every comment and empty line.
+
 A valid XMage deck file has a ``.dck`` extension (and that's really everything
 Java's ``JFileChooser`` cares about).
 
-Sample usage from an interpreter::
+Example usage::
 
-    >>> from tools.minimize import minimize
-    >>> minimize('test.dck')
+    $ python tools/minimize.py "deck.dck"
 
-This will minimize a file ``test.dck`` into ``test.min.dck`` (name by default).
+This will minimize a file ``deck.dck`` into ``deck.min.dck`` (name by default).
 
-Best ran with `pyflow <https://github.com/David-OConnor/pyflow#installation>`_
-as a quick-and-dirty script, using Python 3.9::
+Run it with Python 3.9::
+
+    $ python3.9 tools/minimize.py "cube.dck"
+
+Or with `pyflow <https://github.com/David-OConnor/pyflow#installation>`_ as a
+quick-and-dirty script::
 
     $ echo 3.9 | pyflow script tools/minimize.py "cube.dck"
 
@@ -22,21 +26,23 @@ as a quick-and-dirty script, using Python 3.9::
 from __future__ import annotations
 
 import argparse
-from io import open
-from os import PathLike
+import os
 from pathlib import Path
 import sys
-from typing import NoReturn, Optional, Union, cast
+from typing import ClassVar, NoReturn, Optional, Union, cast, final
 import unittest
 
 # https://github.com/python/typeshed/blob/c5ed22a24e8f14a7d78c0d9824f7307229c3e561/stdlib/2and3/_typeshed/__init__.pyi#L59
-StrPath = Union[str, PathLike[str]]
+StrPath = Union[str, os.PathLike[str]]
 
-__author__ = "mataha"
-__version__ = "0.0.1"
+__all__ = ["minimize"]
+
+__version__ = "0.1.0"
+__author__ = "mataha & pauper-warsaw"
 __license__ = "Public domain"
 
 
+@final
 class XMageDeckFile:
     """Represents an XMage deck file."""
 
@@ -54,30 +60,34 @@ class XMageDeckFile:
         if to is None:
             to = self._minimized_name()
 
-        with open(self._file, 'r') as in_stream, open(to, 'w') as out_stream:
+        with open(self._file, "r") as in_stream, open(to, "w") as out_stream:
             for line in in_stream:
-                if not _is_ignored(line):
-                    print(line.strip(), file=out_stream)
+                if not _is_xmage_ignored(line):
+                    out_stream.write(line)
+
+    _MINIMIZED_EXTENSION: ClassVar = ".min"
 
     def _minimized_name(self) -> StrPath:
-        return self._file.stem + ".min" + self._file.suffix
+        return self._file.stem + self._MINIMIZED_EXTENSION + self._file.suffix
 
-    @staticmethod
-    def _is_valid_xmage_file(path: Path) -> bool:
-        return path.suffix == ".dck"
+    _XMAGE_FILE_EXTENSION: ClassVar = ".dck"
+
+    @classmethod
+    def _is_valid_xmage_file(cls, path: Path) -> bool:
+        return path.suffix == cls._XMAGE_FILE_EXTENSION
 
 
 # https://github.com/magefree/mage/blob/xmage_1.4.47V1/Mage/src/main/java/mage/cards/decks/importer/DckDeckImporter.java#L38-L40
-def _is_ignored(line: str) -> bool:
-    return _is_comment(line) or _is_empty(line)
-
-
-def _is_comment(line: str, *, comment_prefix: str = "#") -> bool:
-    return line.startswith(comment_prefix)
+def _is_xmage_ignored(line: str) -> bool:
+    return _is_empty(line) or _is_comment(line)
 
 
 def _is_empty(line: str) -> bool:
     return not line.strip()
+
+
+def _is_comment(line: str, *, comment_prefix: str = "#") -> bool:
+    return line.startswith(comment_prefix)
 
 
 def minimize(file: StrPath, to: Optional[StrPath] = None) -> None:
@@ -85,29 +95,41 @@ def minimize(file: StrPath, to: Optional[StrPath] = None) -> None:
     XMageDeckFile(file).minimize(to)
 
 
-def _error(exception: Exception) -> NoReturn:
+def _abort(message: str) -> NoReturn:
+    import traceback
+
     program = Path(sys.argv[0]).name
-    message = exception.__str__()
+    cause = traceback.extract_stack(None, 2)[0][2].lstrip("_")
 
-    error: str
+    sys.exit(f"{program}: {cause}: {message}")
 
-    if isinstance(message, bytes) and message:
-        error = cast(bytes, message).decode()
-    elif isinstance(message, str) and message:
-        error = message
-    else:
-        error = type(exception).__name__
 
-    print(f"{program}: error: {error}", file=sys.stderr)
-    sys.exit(True)
+def _error(exception: Exception) -> NoReturn:
+    message = type(exception).__name__
+
+    error = exception.__str__()
+
+    if error:
+        reason = ": "
+
+        if isinstance(error, bytes):
+            reason += cast(bytes, error).decode()
+        elif isinstance(error, str):
+            reason += error
+
+        message += reason
+
+    _abort(message)
 
 
 def _main(argv: Optional[list[str]] = None) -> None:
     if argv is None:
         argv = sys.argv[1:]
 
-    parser = argparse.ArgumentParser(epilog="example: %(prog)s deck.dck",
-                                     fromfile_prefix_chars='@')
+    parser = argparse.ArgumentParser(
+        epilog="example: %(prog)s deck.dck",
+        fromfile_prefix_chars='@'
+    )
 
     parser.add_argument("deck", help="an XMage deck file to minimize")
     parser.add_argument("--version", action="version", version=__version__)
@@ -129,16 +151,16 @@ if __name__ == "__main__":
 class MinimizeTestCase(unittest.TestCase):
 
     @staticmethod
-    def __count_lines(file: StrPath) -> int:
+    def _count_lines(file: StrPath) -> int:
         lines: int
 
-        with open(file, 'r') as stream:
+        with open(file, "r") as stream:
             lines = sum(1 for _ in stream)
 
         return lines
 
     @staticmethod
-    def __resource_path(resource: str) -> StrPath:
+    def _resource(resource: str) -> StrPath:
         this = Path(__file__).resolve()  # rewind all symlinks first
         path = this.parent / resource
 
@@ -147,7 +169,7 @@ class MinimizeTestCase(unittest.TestCase):
     def test_minimize_vintage_cube(self) -> None:
         import tempfile
 
-        deck = self.__resource_path("../cube.dck")
+        deck = self._resource("../cube.dck")
 
         expected = 540 + 2  # 540 lines of cards + 2 lines of metadata
 
@@ -155,14 +177,14 @@ class MinimizeTestCase(unittest.TestCase):
             file = Path(temp) / "test.dck"
             minimize(deck, file)
 
-            actual = self.__count_lines(file)
+            actual = self._count_lines(file)
 
             self.assertEqual(expected, actual)
 
     def test_minimize_this_script(self) -> None:
         import tempfile
 
-        deck = self.__resource_path(__file__)
+        deck = self._resource(__file__)
 
         expected = ValueError
 

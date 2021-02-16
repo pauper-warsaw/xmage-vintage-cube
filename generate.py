@@ -1,33 +1,38 @@
 #!/usr/bin/env python3.9
-"""Generate an up-to-date *Magic Online Vintage Cube* as an XMage deck file.
+"""Generate a *Magic Online* cube as an XMage deck file, sequentially.
 
 Given a file and (optionally) a URL, scraps an up-to-date version of
-*Magic Online Vintage Cube*, fixing all predictable typos in the process.
+a *Magic Online* cube from a site in a Wizards of the Coast article format
+while fixing all common typos in its listing.
+
 Afterwards, for each card in the cube, fetches the oldest non-promotional¹
-print of that card if that's possible (excluding certain sets), groups the
+print of that card (excluding certain sets if that's possible), groups the
 cards based on their bucket (identity) in the cube, and exports it in its
 entirety (metadata included) as an XMage deck file.
+
+Currently the following sets are excluded (reprint-only or fully-reprintable):
+   * Limited Edition Alpha
+   * Fourth Edition
+
+By default, it will attempt to scrap *Magic Online Vintage Cube* data from
+`<https://magic.wizards.com/en/articles/archive/vintage-cube-cardlist>`_.
 
 ¹ If a card is a released, functionally unique promotional card (e.g. Mana
 Crypt, The Walking Dead (**sigh**) cards), then it is procured on the spot.
 
-By default, it will attempt to scrap cube data from Magic's `Mothership
-<https://magic.wizards.com/en/articles/archive/vintage-cube-cardlist>`_.
+Example usage::
 
-Currently the following sets are excluded (reprint-only or fully reprintable):
-   * Limited Edition Alpha
-   * Fourth Edition
+    $ python generate.py "deck.dck"
 
-Sample usage from an interpreter::
+This will attempt to download *Magic Online Vintage Cube* data from Mothership
+(above URL by default) and export it to a file named ``deck.dck``.
 
-    >>> from generate import generate
-    >>> generate("test.dck")
+Run it with Python 3.9 (assuming required dependencies are available)::
 
-This will attempt to download cube data from Mothership and export it to a file
-named ``test.dck``.
+    $ python3.9 generate.py "cube.dck"
 
-Best ran with `pyflow <https://github.com/David-OConnor/pyflow#installation>`_
-as a quick-and-dirty script, using Python 3.9::
+Or with `pyflow <https://github.com/David-OConnor/pyflow#installation>`_ as a
+quick-and-dirty script (dependencies are not needed beforehand this way)::
 
     $ echo 3.9 | pyflow script generate.py "cube.dck"
 
@@ -35,35 +40,48 @@ as a quick-and-dirty script, using Python 3.9::
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+import abc
 import argparse
-from collections import defaultdict
-from dataclasses import dataclass
+import collections
+import dataclasses
 from datetime import datetime
-from functools import cmp_to_key, partial, wraps
+import functools
 import logging
-from os import PathLike
+import os
 from pathlib import Path
 import re
 import sys
-from typing import (Any, Callable, ClassVar, Final, Iterator, NoReturn,
-                    Optional, Text, Tuple, Type, Union, cast, final)
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Final,
+    Iterator,
+    NoReturn,
+    Optional,
+    Text,
+    Tuple,
+    Type,
+    Union,
+    cast,
+    final,
+)
+
+__requires__ = ["beautifulsoup4", "python-dateutil", "mtgsdk", "requests"]
 
 from bs4 import BeautifulSoup, Tag
 import dateutil.parser
 from mtgsdk import Card, Set
 import requests
 
-__author__ = "mataha"
-__version__ = "0.0.1"
-__license__ = "Public domain"
-
-__requires__ = ["beautifulsoup4", "mtgsdk", "python-dateutil", "requests"]
-
-__url__ = "https://magic.wizards.com/en/articles/archive/vintage-cube-cardlist"
-
-StrPath = Union[str, PathLike[str]]
+StrPath = Union[str, os.PathLike[str]]
 Url = Union[Text, bytes]
+
+__all__ = ["generate"]
+
+__version__ = "0.1.0"
+__author__ = "mataha & pauper-warsaw"
+__license__ = "Public domain"
 
 
 def _assemble_logger(name: str) -> logging.Logger:
@@ -83,11 +101,10 @@ def _assemble_logger(name: str) -> logging.Logger:
 log: Final = _assemble_logger(__name__)
 
 
-class Exporter(ABC):
-    """Base exporter for various *Magic* deck editors.
+class Exporter(metaclass=abc.ABCMeta):
+    """Base exporter for various *Magic* deck editors."""
 
-    Even though the sole purpose of this module (right now) is to export
-    *Magic Online Vintage Cube* as an XMage deck, this may change soon-ish."""
+    __slots__ = ()
 
     def export(self, cube: Cube, file: StrPath) -> None:
         log.info(f"Formatting cube data (format: {self.style})")
@@ -96,19 +113,23 @@ class Exporter(ABC):
 
         log.info("Cube data formatted; ready to export")
 
-        with open(file, 'w', buffering=True, encoding="utf-8") as stream:
+        with open(file, "w", buffering=True, encoding="utf-8") as stream:
             stream.write(data)
 
         log.info(f"Cube data exported to {file!s}")
 
     @property
-    @abstractmethod
+    @abc.abstractmethod
     def style(self) -> str:
         raise NotImplementedError
 
-    @abstractmethod
+    @abc.abstractmethod
     def format(self, cube: Cube) -> str:
         raise NotImplementedError
+
+    @classmethod
+    def __subclasshook__(cls, subclass: Any) -> Any:
+        return NotImplemented
 
 
 class XMageExporter(Exporter):
@@ -119,24 +140,29 @@ class XMageExporter(Exporter):
 
         XMage doesn't tolerate non-ASCII characters in card numbers,
         thus these have to be converted to ASCII one way or another.
-        Unfortunately, they do this by hard-coding direct download links..."""
+        Unfortunately, they do this by hard-coding direct download links...
+        """
 
         # https://github.com/magefree/mage/blob/xmage_1.4.47V1/Mage.Client/src/main/java/org/mage/plugins/card/dl/sources/ScryfallImageSupportCards.java
         _TRANSFORMATIONS: ClassVar = {
             # Mainly Arabian Nights, but also Portal Starter Deck, The Dark...
-            '†': '+',
+            "†": "+",
 
             # Planeshift, Deckmasters, War of the Spark (JP Planeswalkers) etc.
-            '★': '*',
+            "★": "*",
         }
 
-        def __init__(self) -> None:
-            self._transformations = self._TRANSFORMATIONS
+        @functools.cached_property
+        def _transformations(self) -> dict[str, str]:
+            return self._TRANSFORMATIONS
+
+        def __iter__(self) -> Iterator[Tuple[str, str]]:
+            return iter(self._transformations.items())
 
         def transform(self, number: str) -> str:
             transformed = number
 
-            for symbol, replacement in self._transformations.items():
+            for symbol, replacement in self:
                 transformed = transformed.replace(symbol, replacement)
 
             return transformed
@@ -144,55 +170,62 @@ class XMageExporter(Exporter):
         def __call__(self, *args: Any, **kwargs: Any) -> str:
             return self.transform(*args, **kwargs)
 
-    _DIRECTIVES: ClassVar = {
-        "Name": "NAME",
-        "Author": "AUTHOR"
-    }
-
-    STYLE: ClassVar = "XMage"
-
     def __init__(self) -> None:
         super().__init__()
 
-        self._transformer = self._UnicodeToAsciiCollectorNumberTransformer()
+        self._transform = self._UnicodeToAsciiCollectorNumberTransformer()
+
+    STYLE: ClassVar = "XMage"
 
     @property
     def style(self) -> str:
         return self.STYLE
 
     @staticmethod
-    def _bucketize(cube: Cube) -> dict[str, list[CubeEntry]]:
-        buckets = defaultdict(list)
+    def _bucketize(cube: Cube) -> dict[str, list[Tuple[CubeEntry, int]]]:
+        log.debug("Sorting buckets...")
 
-        for card in cube:
-            buckets[card.bucket].append(card)
+        buckets = collections.defaultdict(list)
 
-        for bucket in buckets.values():
-            bucket.sort()  # in-place is fine here
+        for card, quantity in cube:
+            buckets[card.bucket].append((card, quantity))
+
+        for name, bucket in buckets.items():
+            bucket.sort()
+
+            log.debug(f"Sorted bucket: {name}")
+
+        log.debug(f"{len(buckets)} buckets sorted")
 
         return buckets
 
-    def format(self, cube: Cube) -> str:
+    _DIRECTIVES: ClassVar = {"Name": "NAME", "Author": "AUTHOR"}
+
+    @classmethod
+    def _preamble(cls, cube: Cube) -> str:
         log.debug("Formatting preamble...")
 
-        result = (f"{self._DIRECTIVES['Name']}:{cube.name} "
-                  f"({cube.date:%d.%m.%Y})\n"
-                  f"{self._DIRECTIVES['Author']}:{cube.author}\n")
+        name = f"{cls._DIRECTIVES['Name']}:{cube.name}"
+        date = f"{cube.date:%d.%m.%Y}"
+        author = f"{cls._DIRECTIVES['Author']}:{cube.author}"
+
+        preamble = f"{name} ({date})\n{author}\n"
 
         log.debug("Preamble formatted")
 
-        buckets = self._bucketize(cube)
+        return preamble
 
-        log.debug(f"{len(buckets)} buckets total")
+    def format(self, cube: Cube) -> str:
+        content = ""
 
-        for bucket, cards in buckets.items():
-            result += f"\n# {bucket}\n"
+        for bucket, cards in self._bucketize(cube).items():
+            content += f"\n# {bucket}\n"
 
-            for card in cards:
-                code = f"[{card.set_code}:{self._transformer(card.number)}]"
-                result += f"{card.quantity} {code} {card.name}\n"
+            for card, quantity in cards:
+                version = f"[{card.set_code}:{self._transform(card.number)}]"
+                content += f"{quantity} {version} {card.name}\n"
 
-        return result
+        return self._preamble(cube) + content
 
 
 @final
@@ -202,7 +235,7 @@ class CardNameSanitizer:
     #: as a precaution against random mistakes.
     #: Data gathered from Mothership, CFB and SCG.
     #:
-    #: Yes, this could be probably delegated to an external API, but /effort.
+    #: Yes, this could be probably relegated to an external API, but /effort.
     _TYPOS: ClassVar = {
         "Azorious Signet":             "Azorius Signet",
         "Elspeth, Knight Errant":      "Elspeth, Knight-Errant",
@@ -215,8 +248,9 @@ class CardNameSanitizer:
         "Ulamog the Ceaseless Hunger": "Ulamog, the Ceaseless Hunger",
     }
 
-    def __init__(self) -> None:
-        self._typos = self._TYPOS
+    @functools.cached_property
+    def _typos(self) -> dict[str, str]:
+        return self._TYPOS
 
     def __getitem__(self, name: str) -> str:
         return self._typos[name]
@@ -255,8 +289,11 @@ class SetRepository:
     #: Extensions of Modern format (e.g. MH1 + its descendants) are considered
     #: ``draft_innovation``.
     _SET_TYPES: ClassVar = {
+        # Primary product types
         "starter", "core", "expansion",
-        "commander", "draft_innovation", "planechase", "archenemy"
+
+        # Supplementary product types
+        "commander", "draft_innovation", "planechase", "archenemy",
     }
 
     #: Sets that shouldn't appear in a cube (for reasons disclosed below).
@@ -266,26 +303,32 @@ class SetRepository:
         "LEA",
 
         # Fourth Edition - alternate print runs and other shenanigans
-        "4ED"
+        "4ED",
     ]
 
-    def __init__(self) -> None:
-        log.info(f"Fetching set data (ignoring {self._BLACKLISTED_SET_CODES})")
+    @functools.cached_property
+    def _sets(self) -> dict[str, Set]:
+        log.info(f"Fetching set data (ignored: {self._BLACKLISTED_SET_CODES})")
         log.debug(f"For set types: {self._SET_TYPES}")
 
-        sets = {s.code: s
-                for s in Set.where(type=','.join(self._SET_TYPES)).all()
-                if s.code not in self._BLACKLISTED_SET_CODES}
+        sets = {
+            s.code: s
+            for s in Set.where(type=",".join(self._SET_TYPES)).all()
+            if s.code not in self._BLACKLISTED_SET_CODES
+        }
 
         log.info(f"Set data obtained: {len(sets)} sets total")
 
-        self._sets = sets
+        return sets
 
     def __getitem__(self, code: str) -> Set:
         return self._sets[code]
 
     def __contains__(self, code: str) -> bool:
         return code in self._sets
+
+
+CardInfo = Tuple[str, str, str]
 
 
 @final
@@ -337,54 +380,25 @@ class ExtraCardRepository:
         # I genuinely hope I won't have to extend this...
     }
 
-    def __init__(self) -> None:
+    @functools.cached_property
+    def _cards(self) -> dict[str, Tuple[str, str]]:
         log.info("Setting up data about extra cards...")
+        extras = self._EXTRAS
+        log.info(f"Extra card data set: {len(extras)} cards total")
 
-        self._cards = self._EXTRAS
+        return extras
 
-        log.info(f"Extra card data set: {len(self._EXTRAS)} cards total")
-
-    def __getitem__(self, name: str) -> Tuple[str, str, str]:
+    def __getitem__(self, name: str) -> CardInfo:
         return (name,) + self._cards[name]
 
     def __contains__(self, name: str) -> bool:
         return name in self._cards
 
 
-_chunkify_regex = re.compile(r"\d+|\D+")
-
-
-def _chunkify(string: str) -> list[Any]:
-    return [int(chunk) if chunk.isnumeric() else chunk
-            for chunk in _chunkify_regex.findall(string)]
-
-
-def _card_date(card: Card, set_source: SetRepository) -> str:
-    return set_source[card.set].release_date
-
-
-def _card_compare(this: Card, other: Card, set_source: SetRepository) -> int:
-    this_date = _card_date(this, set_source)
-    other_date = _card_date(other, set_source)
-
-    if this_date != other_date:
-        return 1 if this_date > other_date else -1
-
-    this_chunks = _chunkify(this.number)
-    other_chunks = _chunkify(other.number)
-
-    if this_chunks != other_chunks:
-        return 1 if this_chunks > other_chunks else -1
-
-    return 0
-
-
-CardFetcher = Callable[['CubeEntryMapper', str], Card]
-CardTranslator = Callable[['CubeEntryMapper', str], Tuple[str, str, str]]
-
-
-def translator(fetcher: CardFetcher) -> CardTranslator:
-    separator = " // "
+def translator(
+    fetcher: Callable[[CubeEntryMapper, str], Card]
+) -> Callable[[CubeEntryMapper, str], CardInfo]:
+    separator: Final = " // "
 
     def serialize_card_by_name(name: str) -> str:
         log.debug(f"Serialization check (name: '{name}')")
@@ -416,20 +430,52 @@ def translator(fetcher: CardFetcher) -> CardTranslator:
 
         return card.name
 
-    @wraps(fetcher)
-    def translate(self, *args: Any, **kwargs: Any) -> Tuple[str, str, str]:
+    @functools.wraps(fetcher)
+    def translate(self, *args: Any, **kwargs: Any) -> CardInfo:
         card = fetcher(self, serialize_card_by_name(*args, **kwargs))
+        name = deserialize_card(card, *args, **kwargs)
 
-        return deserialize_card(card, *args, **kwargs), card.set, card.number
+        return name, card.set, card.number
 
     return translate
+
+
+_chunkify_regex = re.compile(r"\d+|\D+")
+
+
+def _chunkify(string: str) -> list[Any]:
+    return [
+        int(chunk) if chunk.isnumeric() else chunk
+        for chunk in _chunkify_regex.findall(string)
+    ]
+
+
+def _card_date(card: Card, /, set_repo: SetRepository) -> str:
+    return set_repo[card.set].release_date
+
+
+def _card_compare(this: Card, other: Card, /, set_repo: SetRepository) -> int:
+    this_date = _card_date(this, set_repo)
+    other_date = _card_date(other, set_repo)
+
+    if this_date != other_date:
+        return 1 if this_date > other_date else -1
+
+    this_chunks = _chunkify(this.number)
+    other_chunks = _chunkify(other.number)
+
+    if this_chunks != other_chunks:
+        return 1 if this_chunks > other_chunks else -1
+
+    return 0
 
 
 @final
 class CubeEntryMapper:
 
-    def __init__(self, extra_card_repo: ExtraCardRepository,
-                 set_repo: SetRepository) -> None:
+    def __init__(
+        self, extra_card_repo: ExtraCardRepository, set_repo: SetRepository
+    ) -> None:
         self._extra_card_repo = extra_card_repo
         self._set_repo = set_repo
 
@@ -437,97 +483,97 @@ class CubeEntryMapper:
     def _fetch_oldest(self, name: str) -> Card:
         log.debug(f"Querying remote API for cards with '{name}'")
 
-        cards = [card
-                 for card in Card.where(name=name).all()
-                 if card.name == name
-                 if card.set in self._set_repo]
+        cards = [
+            card
+            for card in Card.where(name=name).all()  # wtf ratelimit
+            if card.name == name
+            if card.set in self._set_repo
+        ]
 
         log.debug(f"Returned {len(cards)} hits for cards with '{name}'")
 
-        comparator = partial(_card_compare, set_source=self._set_repo)
+        comparator = functools.partial(_card_compare, set_repo=self._set_repo)
 
-        return min(cards, key=cmp_to_key(comparator))
+        return min(cards, key=functools.cmp_to_key(comparator))
 
-    def _pull_from_api(self, entry: RawCubeEntry) -> CubeEntry:
-        log.info(f"Fetching card '{entry.name}' (source: MTG API)")
-
+    def _obtain_from_api(self, entry: RawCubeEntry) -> CubeEntry:
         name, code, number = self._fetch_oldest(entry.name)
 
-        log.info(f"Obtained card '{name}' "
-                 f"(set code: {code}, collector number: {number})")
-
         return CubeEntry(name, number, code, entry.bucket)
 
-    def _pull_from_extra(self, entry: RawCubeEntry) -> CubeEntry:
-        log.info(f"Fetching card '{entry.name}' (source: this module)")
-
+    def _obtain_from_extra(self, entry: RawCubeEntry) -> CubeEntry:
         name, code, number = self._extra_card_repo[entry.name]
 
-        log.info(f"Obtained card '{name}' "
-                 f"(set code: {code}, collector number: {number})")
-
         return CubeEntry(name, number, code, entry.bucket)
 
+    @functools.cache
     def map(self, entry: RawCubeEntry) -> CubeEntry:
         name = entry.name
 
-        log.debug(f"Mapping card '{name}'")
+        log.debug(f"Obtaining card '{name}'")
+
+        card: CubeEntry
 
         if name in self._extra_card_repo:
-            return self._pull_from_extra(entry)
+            log.info(f"Fetching card '{name}' (source: this module)")
+            card = self._obtain_from_extra(entry)
         else:
-            return self._pull_from_api(entry)
+            log.info(f"Fetching card '{name}' (source: MTG API)")
+            card = self._obtain_from_api(entry)
+
+        log.info(
+            f"Obtained card '{card.name}' "
+            f"(set code: {card.set_code}, collector number: {card.number})"
+        )
+
+        return card
 
 
 @final
 class CubeScraper:
 
-    def __init__(self, sanitizer: CardNameSanitizer,
-                 *, parser: str = "html.parser") -> None:
+    def __init__(
+        self, sanitizer: CardNameSanitizer, *, parser: str = "html.parser"
+    ) -> None:
         self._sanitizer = sanitizer
         self._parser = parser
 
     @staticmethod
-    def _get_name(content: Tag) -> str:
-        suffix = "Cardlist"
-
+    def _get_name(content: Tag, /) -> str:
         tag = content.h1
+        pattern = r"(?:Spotlight Cube Series ?[:-] )?(.*)"
 
-        value = tag.text.removesuffix(suffix).rstrip()
+        match = re.fullmatch(pattern, tag.text)
+        value = match[1].removesuffix(" Cardlist") if match else "Cube"
         log.debug(f"Name: {value}")
 
         return value
 
     @staticmethod
-    def _get_date(content: Tag) -> datetime:
-        prefix = "Updated:"
-        selector = "div #content-detail-page-of-an-article p:nth-child(2)"
+    def _get_date(content: Tag, /) -> datetime:
+        tag = content.find(id="content").find("p", class_="posted-in")
+        pattern = r" [io]n "
 
-        tag = content.select_one(selector)
-
-        value = tag.text.removeprefix(prefix).lstrip()
+        value = re.split(pattern, tag.text)[-1]
         log.debug(f"Date: {value}")
 
         return dateutil.parser.parse(value)
 
     @staticmethod
-    def _get_author(content: Tag) -> str:
-        prefix = "By"
-        selector = "div .author p:nth-of-type(1)"
+    def _get_author(content: Tag, /) -> str:
+        tag = content.find(class_="author").p
+        pattern = "By "
 
-        tag = content.select_one(selector)
-
-        value = tag.text.removeprefix(prefix).lstrip()
+        value = tag.text.removeprefix(pattern)
         log.debug(f"Author: {value}")
 
         return value
 
     @staticmethod
-    def _get_entries(content: Tag,
-                     sanitizer: CardNameSanitizer) -> list[RawCubeEntry]:
-        css_class = "collapsibleBlock"
-
-        table = content.find_all("div", class_=css_class)[1].table
+    def _get_entries(
+        content: Tag, /, sanitizer: CardNameSanitizer
+    ) -> list[RawCubeEntry]:
+        table = content.find_all("table", class_="sortable-table")[-1]
         rows = table.tbody.find_all("tr")
 
         elements = []
@@ -542,31 +588,39 @@ class CubeScraper:
 
         return elements
 
-    @staticmethod
-    def _scrap(url: Url) -> str:
-        headers = {
-            "DNT": "1",
-            "Upgrade-Insecure-Requests": "1",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                          "AppleWebKit/537.36 (KHTML, like Gecko) "
-                          "Chrome/79.0.3945.130 "
-                          "Safari/537.36",
-            "Accept": "text/html,"
-                      "application/xhtml+xml,"
-                      "application/xml;q=0.9,"
-                      "image/webp,"
-                      "image/apng,"
-                      "*/*;q=0.8,"
-                      "application/signed-exchange;v=b3;q=0.9",
-            "Sec-Fetch-Site": "cross-site",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-User": "?1",
-            "Referer": "https://duckduckgo.com/",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Accept-Language": "en-US,en-GB;q=0.9,en;q=0.8",
-        }
+    _SCRAPER_HEADERS: ClassVar = {
+        "DNT": "1",
+        "Upgrade-Insecure-Requests": "1",
+        "User-Agent": " ".join(
+            [
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "AppleWebKit/537.36 (KHTML, like Gecko)",
+                "Chrome/79.0.3945.130",
+                "Safari/537.36",
+            ]
+        ),
+        "Accept": ",".join(
+            [
+                "text/html",
+                "application/xhtml+xml",
+                "application/xml;q=0.9",
+                "image/webp",
+                "image/apng",
+                "*/*;q=0.8",
+                "application/signed-exchange;v=b3;q=0.9",
+            ]
+        ),
+        "Sec-Fetch-Site": "cross-site",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-User": "?1",
+        "Referer": "https://duckduckgo.com/",
+        "Accept-Encoding": ", ".join(["gzip", "deflate", "br"]),
+        "Accept-Language": ",".join(["en-US,en-GB;q=0.9", "en;q=0.8"]),
+    }
 
-        log.debug(f"Headers: {headers}")
+    @classmethod
+    def _scrap(cls, url: Url) -> str:
+        headers = cls._SCRAPER_HEADERS
 
         response = requests.get(url, headers=headers)
         log.debug(f"Response status code: {response.status_code}")
@@ -588,20 +642,22 @@ class CubeScraper:
         author = self._get_author(content)
         entries = self._get_entries(content, self._sanitizer)
 
-        log.info(f"Cube data: {name} ({date:%d.%m.%Y}) by {author}, "
-                 f"{len(entries)} entries total")
+        log.info(
+            f"Cube data: {name} ({date:%d.%m.%Y}) by {author}, "
+            f"{len(entries)} entries total"
+        )
 
         return RawCube(name, date, author, entries)
 
 
-@dataclass(frozen=True, order=True)
+@dataclasses.dataclass(frozen=True, order=True)
 class RawCubeEntry:
 
     name: str
     bucket: str
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class RawCube:
 
     name: str
@@ -616,37 +672,35 @@ class RawCube:
         return len(self.entries)
 
 
-@dataclass(frozen=True, order=True)
+@dataclasses.dataclass(frozen=True, order=True)
 class CubeEntry:
 
-    # https://www.python.org/dev/peps/pep-0591/#semantics-and-examples ClassVar
-    _SINGLETON: ClassVar[int] = 1
-
     name: str
-    number: str  # can contain non-digits, sadly (e.g. 'mb62sb', '221s★' etc.)
+    number: str  # can contain non-digits, sadly ('mb62sb', '221s★' etc.)
     set_code: str
     bucket: str
-    quantity: int = _SINGLETON  # a cube is *technically* strictly singleton
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Cube:
 
     name: str
     date: datetime
     author: str
-    entries: list[CubeEntry]
+    entries: collections.Counter[CubeEntry]
 
-    def __iter__(self) -> Iterator[CubeEntry]:
-        return iter(self.entries)
+    def __iter__(self) -> Iterator[Tuple[CubeEntry, int]]:
+        return iter(self.entries.items())
 
     def __len__(self) -> int:
-        return len(self.entries)
+        return sum(self.entries.values())
 
     @classmethod
     def from_raw(cls, raw: RawCube, mapper: CubeEntryMapper) -> Cube:
-        return cls(raw.name, raw.date, raw.author, [mapper.map(entry)
-                                                    for entry in raw])
+        # TODO: should this be parallelized?
+        cards = [mapper.map(entry) for entry in raw]
+
+        return cls(raw.name, raw.date, raw.author, collections.Counter(cards))
 
 
 def _export(raw: RawCube, file: StrPath, /, exporter: Type[Exporter]) -> None:
@@ -655,43 +709,48 @@ def _export(raw: RawCube, file: StrPath, /, exporter: Type[Exporter]) -> None:
     exporter().export(Cube.from_raw(raw, mapper), file)
 
 
+URL = "https://magic.wizards.com/en/articles/archive/vintage-cube-cardlist"
+
+
 def generate(file: StrPath, url: Optional[Url] = None) -> None:
-    """Generate an up-to-date *Magic Online Vintage Cube*
-    as an XMage deck file."""
+    """Generate a *Magic Online* cube as an XMage deck file."""
 
     if url is None:
-        url = __url__
+        url = URL
 
-    with open(file, 'a+', encoding="utf-8", errors="ignore") as stream:
+    with open(file, "a+", encoding="utf-8", errors="ignore") as stream:
         assert not stream.closed
 
     scrap = CubeScraper(CardNameSanitizer()).execute(url)
 
-    _export(scrap, file, XMageExporter)
+    _export(scrap, file, exporter=XMageExporter)
 
 
 def _abort(message: str) -> NoReturn:
     import traceback
 
     program = Path(sys.argv[0]).name
-    reason = traceback.extract_stack(None, 2)[0][2].lstrip("_")
+    cause = traceback.extract_stack(None, 2)[0][2].lstrip("_")
 
-    print(f"{program}: {reason}: {message}", file=sys.stderr)
-    sys.exit(True)
+    sys.exit(f"{program}: {cause}: {message}")
 
 
 def _error(exception: Exception) -> NoReturn:
-    message = exception.__str__()
-    error: str
+    message = type(exception).__name__
 
-    if isinstance(message, bytes) and message:
-        error = cast(bytes, message).decode()
-    elif isinstance(message, str) and message:
-        error = message
-    else:
-        error = type(exception).__name__
+    error = exception.__str__()
 
-    _abort(error)
+    if error:
+        reason = ": "
+
+        if isinstance(error, bytes):
+            reason += cast(bytes, error).decode()
+        elif isinstance(error, str):
+            reason += error
+
+        message += reason
+
+    _abort(message)
 
 
 def _interrupt() -> NoReturn:
@@ -702,11 +761,13 @@ def _main(argv: Optional[list[str]] = None) -> None:
     if argv is None:
         argv = sys.argv[1:]
 
-    parser = argparse.ArgumentParser(epilog="example: %(prog)s deck.dck",
-                                     fromfile_prefix_chars='@')
+    parser = argparse.ArgumentParser(
+        epilog="example: %(prog)s deck.dck",
+        fromfile_prefix_chars='@'
+    )
 
-    parser.add_argument("--url", "-u", help="URL to scrap cube data from")
     parser.add_argument("file", help="file to write cube contents to")
+    parser.add_argument("--url", "-u", help="URL to scrap cube data from")
     parser.add_argument("--version", action="version", version=__version__)
 
     args = parser.parse_args(argv)

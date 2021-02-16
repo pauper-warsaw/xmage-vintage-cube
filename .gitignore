@@ -3,7 +3,16 @@
 # Vintage Cube
 !/cube.dck
 
-# Python files
-*.pyc
+# Python
+*.py[cod]
+*$py.class
 __pycache__/
+
+# pyflow
 __pypackages__/
+
+# virtualenv
+env/
+
+# mypy
+.mypy_cache/
