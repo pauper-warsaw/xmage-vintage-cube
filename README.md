@@ -10,12 +10,10 @@ The latest version of the cube can be obtained [here](./cube.dck)
 *Vintage Cube* on XMage:
 
  * is frequently not up-to-date (the most recent one is from July 2020 as of
-   writing this¹);
- * includes cards with glitchy images, which frequently do not load correctly 
+   initializing this project);
+ * includes improperly coded card images, which generally do not load correctly
    (Japanese alternate-art Planeswalkers are especially guilty of this);
  * doesn't exude Vintage feel by utilizing recent reprints and promos.
-
-¹ Hopefully I will make an actual effort to maintain this...
 
 ## License
 
