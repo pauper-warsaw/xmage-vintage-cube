@@ -69,9 +69,9 @@ from typing import (
 
 __requires__ = ["beautifulsoup4", "python-dateutil", "mtgsdk", "requests"]
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, Tag  # type: ignore[import]
 import dateutil.parser
-from mtgsdk import Card, Set
+from mtgsdk import Card, Set  # type: ignore[import]
 import requests
 
 StrPath = Union[str, os.PathLike[str]]
