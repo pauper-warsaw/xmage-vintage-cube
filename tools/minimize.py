@@ -39,7 +39,6 @@ __all__ = ["minimize"]
 
 __version__ = "0.1.0"
 __author__ = "mataha & pauper-warsaw"
-__license__ = "Public domain"
 
 
 @final
@@ -127,6 +126,7 @@ def _main(argv: Optional[list[str]] = None) -> None:
         argv = sys.argv[1:]
 
     parser = argparse.ArgumentParser(
+        description="minimize an XMage deck file",
         epilog="example: %(prog)s deck.dck",
         fromfile_prefix_chars='@'
     )

@@ -79,9 +79,8 @@ Url = Union[Text, bytes]
 
 __all__ = ["generate"]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "mataha & pauper-warsaw"
-__license__ = "Public domain"
 
 
 def _assemble_logger(name: str) -> logging.Logger:
@@ -182,20 +181,24 @@ class XMageExporter(Exporter):
         return self.STYLE
 
     @staticmethod
-    def _bucketize(cube: Cube) -> dict[str, list[Tuple[CubeEntry, int]]]:
+    def _group(cube: Cube) -> dict[Optional[str], list[Tuple[CubeEntry, int]]]:
         log.debug("Sorting buckets...")
 
         buckets = collections.defaultdict(list)
 
         for card, quantity in cube:
-            buckets[card.bucket].append((card, quantity))
+            buckets[card.category].append((card, quantity))
 
-        for name, bucket in buckets.items():
-            bucket.sort()
+        if len(buckets) > 1:
+            for name, bucket in buckets.items():
+                bucket.sort()
 
-            log.debug(f"Sorted bucket: {name}")
+                log.debug(f"Sorted bucket: {name}")
 
-        log.debug(f"{len(buckets)} buckets sorted")
+            log.debug(f"{len(buckets)} buckets sorted")
+
+        else:
+            log.debug("Unbucketed cube, no sorting necessary")
 
         return buckets
 
@@ -218,8 +221,11 @@ class XMageExporter(Exporter):
     def format(self, cube: Cube) -> str:
         content = ""
 
-        for bucket, cards in self._bucketize(cube).items():
-            content += f"\n# {bucket}\n"
+        buckets = self._group(cube)
+
+        for bucket, cards in buckets.items():
+            if next(iter(buckets)) is not None:
+                content += f"\n# {bucket}\n"
 
             for card, quantity in cards:
                 version = f"[{card.set_code}:{self._transform(card.number)}]"
@@ -499,12 +505,12 @@ class CubeEntryMapper:
     def _obtain_from_api(self, entry: RawCubeEntry) -> CubeEntry:
         name, code, number = self._fetch_oldest(entry.name)
 
-        return CubeEntry(name, number, code, entry.bucket)
+        return CubeEntry(name, number, code, entry.category)
 
     def _obtain_from_extra(self, entry: RawCubeEntry) -> CubeEntry:
         name, code, number = self._extra_card_repo[entry.name]
 
-        return CubeEntry(name, number, code, entry.bucket)
+        return CubeEntry(name, number, code, entry.category)
 
     @functools.cache
     def map(self, entry: RawCubeEntry) -> CubeEntry:
@@ -541,10 +547,10 @@ class CubeScraper:
     @staticmethod
     def _get_name(content: Tag, /) -> str:
         tag = content.h1
-        pattern = r"(?:Spotlight Cube Series ?[:-] )?(.*)"
+        pattern = r"(?:Spotlight Cube Series ?[:-] )?(\w+(?: \w+)* [Cc]ube).*"
 
         match = re.fullmatch(pattern, tag.text)
-        value = match[1].removesuffix(" Cardlist") if match else "Cube"
+        value = match[1].strip() if match else "Unnamed Cube"
         log.debug(f"Name: {value}")
 
         return value
@@ -579,10 +585,10 @@ class CubeScraper:
         elements = []
 
         for row in rows:
-            first, second, *_ = row.find_all("td")
+            first, *second = row.find_all("td")
 
             name = sanitizer.sanitize(first.text)
-            bucket = second.text
+            bucket = second[0].text if second else None
 
             elements.append(RawCubeEntry(name, bucket))
 
@@ -654,7 +660,7 @@ class CubeScraper:
 class RawCubeEntry:
 
     name: str
-    bucket: str
+    category: Optional[str]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -678,7 +684,7 @@ class CubeEntry:
     name: str
     number: str  # can contain non-digits, sadly ('mb62sb', '221s★' etc.)
     set_code: str
-    bucket: str
+    category: Optional[str]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -712,16 +718,21 @@ def _export(raw: RawCube, file: StrPath, /, exporter: Type[Exporter]) -> None:
 URL = "https://magic.wizards.com/en/articles/archive/vintage-cube-cardlist"
 
 
-def generate(file: StrPath, url: Optional[Url] = None) -> None:
+def generate(
+    file: StrPath, dry: bool = False, url: Optional[Url] = None
+) -> None:
     """Generate a *Magic Online* cube as an XMage deck file."""
 
     if url is None:
         url = URL
 
+    scrap = CubeScraper(CardNameSanitizer()).execute(url)
+
+    if dry is True:
+        sys.exit(None)
+
     with open(file, "a+", encoding="utf-8", errors="ignore") as stream:
         assert not stream.closed
-
-    scrap = CubeScraper(CardNameSanitizer()).execute(url)
 
     _export(scrap, file, exporter=XMageExporter)
 
@@ -762,18 +773,20 @@ def _main(argv: Optional[list[str]] = None) -> None:
         argv = sys.argv[1:]
 
     parser = argparse.ArgumentParser(
+        description="generate a Magic Online cube as an XMage deck file",
         epilog="example: %(prog)s deck.dck",
         fromfile_prefix_chars='@'
     )
 
     parser.add_argument("file", help="file to write cube contents to")
     parser.add_argument("--url", "-u", help="URL to scrap cube data from")
+    parser.add_argument("--dry", help="perform a dry run", action="store_true")
     parser.add_argument("--version", action="version", version=__version__)
 
     args = parser.parse_args(argv)
 
     try:
-        generate(args.file, args.url)
+        generate(args.file, args.dry, args.url)
 
     except Exception as exception:
         _error(exception)
