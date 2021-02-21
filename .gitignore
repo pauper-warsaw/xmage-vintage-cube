@@ -16,3 +16,10 @@ env/
 
 # mypy
 .mypy_cache/
+
+# Logging
+*.log
+
+# Profiling
+restats
+*.stats

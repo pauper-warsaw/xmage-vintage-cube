@@ -84,7 +84,7 @@ __author__ = "mataha & pauper-warsaw"
 
 
 def _assemble_logger(name: str) -> logging.Logger:
-    format_ = logging.Formatter("[%(levelname)-8s] [%(asctime)s] %(message)s")
+    format_ = logging.Formatter("[%(asctime)s] [%(levelname)-8s] %(message)s")
 
     handler = logging.StreamHandler()
     handler.setLevel(logging.INFO)
