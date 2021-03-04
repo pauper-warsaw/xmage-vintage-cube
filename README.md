@@ -12,7 +12,8 @@ The latest version of the cube can be obtained [here](./cube.dck)
  * is frequently not up-to-date (the most recent one is from July 2020 as of
    initializing this project);
  * includes improperly coded card images, which generally do not load correctly
-   (Japanese alternate-art Planeswalkers are especially guilty of this);
+   (Japanese promotional alternate-art Planeswalkers are especially guilty
+   of this);
  * doesn't exude Vintage feel by utilizing recent reprints and promos.
 
 ## License
