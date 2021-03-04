@@ -3,7 +3,7 @@
 *Magic Online Vintage Cube* for use with [XMage][1], as curated [here][2].
 
 The latest version of the cube can be obtained [here](./cube.dck)
-(December 23, 2020).
+(March 1, 2021).
 
 ## Rationale
 

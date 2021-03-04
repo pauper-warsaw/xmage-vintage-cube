@@ -1,4 +1,4 @@
-NAME:Vintage Cube (23.12.2020)
+NAME:Vintage Cube (01.03.2021)
 AUTHOR:Wizards of the Coast
 
 # White
@@ -8,7 +8,6 @@ AUTHOR:Wizards of the Coast
 1 [LEB:3] Balance
 1 [M10:4] Baneslayer Angel
 1 [JOU:5] Banishing Light
-1 [JUD:5] Benevolent Bodyguard
 1 [NPH:4] Blade Splicer
 1 [BNG:5] Brimaz, King of Oreskos
 1 [DIS:8] Condemn
@@ -68,6 +67,7 @@ AUTHOR:Wizards of the Coast
 1 [SOI:44] Thraben Inspector
 1 [RNA:27] Tithe Taker
 1 [C13:25] Unexpectedly Absent
+1 [KHM:35] Usher of the Fallen
 1 [ORI:40] Vryn Wingmare
 1 [ROE:53] Wall of Omens
 1 [MH1:37] Winds of Abandon
@@ -85,6 +85,7 @@ AUTHOR:Wizards of the Coast
 1 [AKH:211] Commit // Memory
 1 [MBS:21] Consecrated Sphinx
 1 [LEB:53] Control Magic
+1 [KHM:50] Cosima, God of the Voyage
 1 [LEB:55] Counterspell
 1 [LRW:56] Cryptic Command
 1 [NEM:30] Daze
@@ -131,7 +132,6 @@ AUTHOR:Wizards of the Coast
 1 [ZEN:67] Spell Pierce
 1 [BBD:41] Spellseeker
 1 [ALA:60] Tezzeret the Seeker
-1 [WWK:40] Thada Adel, Acquisitor
 1 [THB:73] Thassa's Oracle
 1 [DOM:57] The Mirari Conjecture
 1 [ZNR:85] Thieving Skydiver
@@ -188,7 +188,6 @@ AUTHOR:Wizards of the Coast
 1 [LRW:124] Makeshift Mannequin
 1 [MBS:46] Massacre Wurm
 1 [RIX:77] Mastermind's Acquisition
-1 [TOR:69] Mesmeric Fiend
 1 [GRN:77] Midnight Reaper
 1 [LEB:116] Mind Twist
 1 [LEB:263] Mox Jet
@@ -217,6 +216,7 @@ AUTHOR:Wizards of the Coast
 1 [LRW:145] Thoughtseize
 1 [C13:96] Toxic Deluge
 1 [ISD:122] Unburial Rites
+1 [KHM:114] Valki, God of Lies
 1 [VIS:72] Vampiric Tutor
 1 [ELD:110] Wishclaw Talisman
 1 [THB:123] Woe Strider
@@ -230,6 +230,7 @@ AUTHOR:Wizards of the Coast
 1 [TSP:143] Ancient Grudge
 1 [ULG:74] Avalanche Riders
 1 [CON:58] Banefire
+1 [KHM:123] Birgi, God of Storytelling
 1 [KLD:199] Bomat Courier
 1 [PTK:104] Burning of Xinye
 1 [ZEN:119] Burst Lightning
@@ -240,11 +241,9 @@ AUTHOR:Wizards of the Coast
 1 [CHK:163] Desperate Ritual
 1 [RIX:99] Dire Fleet Daredevil
 1 [WAR:125] Dreadhorde Arcanist
-1 [HOU:90] Earthshaker Khenra
 1 [JOU:94] Eidolon of the Great Revel
 1 [ELD:122] Embereth Shieldbreaker
 1 [TSP:152] Empty the Warrens
-1 [GRN:99] Experimental Frenzy
 1 [DKA:87] Faithless Looting
 1 [XLN:254] Field of Ruin
 1 [VIS:79] Fireblast
@@ -256,6 +255,7 @@ AUTHOR:Wizards of the Coast
 1 [ZEN:126] Goblin Guide
 1 [M15:145] Goblin Rabblemaster
 1 [ULG:80] Goblin Welder
+1 [KHM:139] Goldspan Dragon
 1 [TOR:100] Grim Lavamancer
 1 [AKH:136] Hazoret the Fervent
 1 [DKA:93] Hellrider
@@ -268,6 +268,7 @@ AUTHOR:Wizards of the Coast
 1 [RNA:107] Light Up the Stage
 1 [LEB:162] Lightning Bolt
 1 [THS:127] Lightning Strike
+1 [KHM:142] Magda, Brazen Outlaw
 1 [LEB:163] Mana Flare
 1 [RTR:101] Mizzium Mortars
 1 [KTK:118] Monastery Swiftspear
@@ -289,7 +290,6 @@ AUTHOR:Wizards of the Coast
 1 [ATQ:82a] Strip Mine
 1 [SCG:106] Sulfuric Vortex
 1 [CHK:193] Through the Breach
-1 [M13:150] Thundermaw Hellkite
 1 [TMP:330] Wasteland
 1 [LEB:184] Wheel of Fortune
 1 [P02:120] Wildfire
@@ -306,7 +306,6 @@ AUTHOR:Wizards of the Coast
 1 [RNA:122] Biogenic Ooze
 1 [LEB:187] Birds of Paradise
 1 [NPH:104] Birthing Pod
-1 [XLN:179] Carnage Tyrant
 1 [LEB:189] Channel
 1 [BNG:119] Courser of Kruphix
 1 [AVR:172] Craterhoof Behemoth
@@ -362,6 +361,7 @@ AUTHOR:Wizards of the Coast
 1 [M13:193] Thragtusk
 1 [SOI:233] Tireless Tracker
 1 [ZNR:215] Turntimber Symbiosis
+1 [KHM:199] Vorinclex, Monstrous Raider
 1 [STH:125] Wall of Blossoms
 1 [MIR:253] Wall of Roots
 1 [FRF:145] Whisperwood Elemental
@@ -383,10 +383,10 @@ AUTHOR:Wizards of the Coast
 1 [IKO:232] Yorion, Sky Nomad
 
 # Boros
-1 [ALA:154] Ajani Vengeant
 1 [EVE:139] Figure of Destiny
 1 [RAV:213] Lightning Helix
 1 [SOI:247] Nahiri, the Harbinger
+1 [KHM:229] Showdown of the Skalds
 1 [DGM:135] Wear // Tear
 
 # Simic
@@ -436,7 +436,7 @@ AUTHOR:Wizards of the Coast
 1 [WAR:187] Casualties of War
 1 [ARB:92] Maelstrom Pulse
 1 [APC:114] Pernicious Deed
-1 [GRN:213] Vraska, Golgari Queen
+1 [KHM:228] Sarulf, Realm Eater
 
 # Multicolor
 1 [CN2:77] Leovold, Emissary of Trest
