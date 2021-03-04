@@ -79,7 +79,7 @@ Url = Union[Text, bytes]
 
 __all__ = ["generate"]
 
-__version__ = "0.2.0"
+__version__ = "0.2.3"
 __author__ = "mataha & pauper-warsaw"
 
 
@@ -242,13 +242,18 @@ class CardNameSanitizer:
     #: Data gathered from Mothership, CFB and SCG.
     #:
     #: Yes, this could be probably relegated to an external API, but /effort.
+    #:
+    #: Captain's Log, Day 42: this is getting silly. TODO: externalize this
     _TYPOS: ClassVar = {
         "Azorious Signet":             "Azorius Signet",
         "Elspeth, Knight Errant":      "Elspeth, Knight-Errant",
         "Hazoret, the Fervent":        "Hazoret the Fervent",
         "Jace, Vryns Prodigy":         "Jace, Vryn's Prodigy",
+        "Kozilek, Butcher of Truths":  "Kozilek, Butcher of Truth",
         "Leonin Relic-Warden":         "Leonin Relic-Warder",
+        "Mastermind's Acquistion":     "Mastermind's Acquisition",
         "Nahiri the Harbinger":        "Nahiri, the Harbinger",
+        "Qasali Pridemate":            "Qasali Pridemage",
         "Sakura Tribe Elder":          "Sakura-Tribe Elder",
         "Smugglers Copter":            "Smuggler's Copter",
         "Ulamog the Ceaseless Hunger": "Ulamog, the Ceaseless Hunger",
@@ -401,45 +406,49 @@ class ExtraCardRepository:
         return name in self._cards
 
 
+SEPARATOR: Final = " // "
+
+
 def translator(
     fetcher: Callable[[CubeEntryMapper, str], Card]
 ) -> Callable[[CubeEntryMapper, str], CardInfo]:
-    separator: Final = " // "
+    layouts: Final = ["split", "aftermath"]
 
     def serialize_card_by_name(name: str) -> str:
         log.debug(f"Serialization check (name: '{name}')")
 
-        if separator in name:
+        if SEPARATOR in name:
             # Every sub-card has a unique Multiverse name,
             # and thus only one split is required.
             log.info(f"Serializing card (name: '{name}')")
-            serialized, _ = name.split(separator, maxsplit=1)
+            serialized, *_ = name.split(SEPARATOR, maxsplit=1)
             log.info(f"Card serialized as '{serialized}'")
 
             return serialized
 
         return name
 
-    def deserialize_card(card: Card, name: str) -> str:
-        names = card.names
+    def deserialize_card(card: Card) -> str:
+        name = card.name
 
-        log.debug(f"Deserialization check (names: '{names}')")
+        log.debug(f"Deserialization check (name: '{name}')")
 
         # https://docs.magicthegathering.io/#api_v1cards_list name, layout
-        if names and name not in names:
-            # If the card's full name is not a sub-name itself, merge them all.
-            log.info(f"Deserializing card (names: {names})")
-            deserialized = separator.join(names)
+        if SEPARATOR in name and card.layout not in layouts:
+            parts = name.split(SEPARATOR)
+            # Only the first part (sub-card) is relevant.
+            log.info(f"Deserializing card (names: {parts})")
+            deserialized = parts[0]
             log.info(f"Card deserialized as '{deserialized}'")
 
             return deserialized
 
-        return card.name
+        return name
 
     @functools.wraps(fetcher)
     def translate(self, *args: Any, **kwargs: Any) -> CardInfo:
         card = fetcher(self, serialize_card_by_name(*args, **kwargs))
-        name = deserialize_card(card, *args, **kwargs)
+        name = deserialize_card(card)
 
         return name, card.set, card.number
 
@@ -476,6 +485,10 @@ def _card_compare(this: Card, other: Card, /, set_repo: SetRepository) -> int:
     return 0
 
 
+def _card_face(this: Card) -> str:
+    return this.name.split(SEPARATOR, maxsplit=1)[0]
+
+
 @final
 class CubeEntryMapper:
 
@@ -491,8 +504,8 @@ class CubeEntryMapper:
 
         cards = [
             card
-            for card in Card.where(name=name).all()  # wtf ratelimit
-            if card.name == name
+            for card in Card.where(name=name).all()
+            if _card_face(card) == name
             if card.set in self._set_repo
         ]
 
@@ -560,6 +573,7 @@ class CubeScraper:
         tag = content.find(id="content").find("p", class_="posted-in")
         pattern = r" [io]n "
 
+        # Should probably take cube updates into account - not only post date.
         value = re.split(pattern, tag.text)[-1]
         log.debug(f"Date: {value}")
 
